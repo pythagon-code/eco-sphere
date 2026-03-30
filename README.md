@@ -1,5 +1,7 @@
 # EcoSphere
 
+![Demo](images/demo.jpg)
+
 EcoSphere is an interactive 3D visualization tool for exploring global economic data using GDP from the World Bank. It allows users to analyze country-level economic trends, compare similarity between countries, and view clustering results on a 3D globe.
 
 ## Features
