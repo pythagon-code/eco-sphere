@@ -67,12 +67,22 @@ log_scale_button = Button(
 )
 
 year_slider = Slider(
+    parent=camera.ui,
     min=1960,
     max=2025,
     default=2000,
     step=1,
+    origin=Vec2(.5, .5),
     text_color=color.white,
     position=(-.25, -.45),
+)
+year_slider_label = Text(
+    parent=camera.ui,
+    text="Year",
+    color=color.white,
+    scale=1.5,
+    origin=Vec2(.5, .5),
+    position=Vec2(.05, -.37),
 )
 
 legend_panel = Entity(
@@ -96,7 +106,7 @@ legend_values = []
 legend_num_steps = 7
 for i in range(legend_num_steps):
     y_pos = .2 - i * .09
-    step = i / legend_num_steps
+    step = i / (legend_num_steps - 1)
     point = Entity(
         parent = legend_panel,
         model = "circle",
@@ -128,15 +138,19 @@ def format_gdp_value(gdp_value: float) -> str:
         return f"{gdp_value / 1000000:.1f}M"
     return f"{gdp_value:.0f}"
 
-def apply_legend_values(year_index: int) -> None:
+def apply_legend_values(year_index: int, log_scale: bool = True) -> None:
+    print(f"applying legend values for year {year_index}")
     gdp_values = sorted(gdp[year_index] for gdp in gdps.values())
     if not gdp_values:
         return
-    last_index = len(gdp_values) - 1
+    gdp_max = gdp_values[-1]
+    gdp_scale_max = math.log1p(gdp_max) if log_scale else gdp_max
     for i in range(legend_num_steps):
-        step = i / legend_num_steps
-        value_index = int(step * last_index)
-        legend_values[i].text = format_gdp_value(gdp_values[value_index])
+        step = i / (legend_num_steps - 1)
+        legend_points[i].color = add_hsv(color.red, (step * 340, 0, 0))
+        scaled_value = step * gdp_scale_max
+        gdp_value = math.expm1(scaled_value) if log_scale else scaled_value
+        legend_values[i].text = format_gdp_value(gdp_value)
 
 def apply_year_colors(year_index: int, log_scale: bool = True) -> None:
     global current_year_index
@@ -158,9 +172,9 @@ def apply_year_colors(year_index: int, log_scale: bool = True) -> None:
         if log_scale:
             gdp = math.log1p(gdp)
         ratio = (gdp / gdp_max) if gdp_max else 0
-        col = add_hsv(color.red, (ratio * 360, 0, 0))
+        col = add_hsv(color.red, (ratio * 340, 0, 0))
         country.color = col
-    apply_legend_values(year_index)
+    apply_legend_values(year_index, log_scale=log_scale)
 
 def input(key: str) -> None:
     global left_mouse_pressed, mouse_position, camera_distance, selected_country, unselected_country
@@ -204,6 +218,7 @@ def update() -> None:
     hovered_country = mouse.hovered_entity
     if hovered_country and hovered_country not in selected_countries and hovered_country.name in countries:
         if hovered_country_name != hovered_country.name:
+            print(f"displaying country info for {hovered_country.name}")
             gui = display_country_info(gui, hovered_country.name)
             hovered_country_name = hovered_country.name
         elif gui is None:
