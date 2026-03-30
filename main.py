@@ -308,16 +308,33 @@ def format_gdp_value(gdp_value: float) -> str:
         return f"{gdp_value / 1000000:.1f}M"
     return f"{gdp_value:.0f}"
 
+def wrap_country_name(name: str, max_len: int = 16) -> str:
+    words = name.split(" ")
+    lines = []
+    current_line = ""
+    for word in words:
+        candidate = word if not current_line else f"{current_line} {word}"
+        if len(candidate) <= max_len:
+            current_line = candidate
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return "\n".join(lines)
+
 def get_country_gdp_info_text(country_name: str) -> str:
+    wrapped_country_name = wrap_country_name(country_name)
     if country_name not in gdps:
-        return f"{country_name}\nGDP: N/A"
+        return f"{wrapped_country_name}\nGDP: N/A"
     if current_year_index is None:
-        return f"{country_name}\nGDP: N/A"
+        return f"{wrapped_country_name}\nGDP: N/A"
     country_gdp_values = gdps[country_name]
     if current_year_index < 0 or current_year_index >= len(country_gdp_values):
-        return f"{country_name}\nGDP: N/A"
+        return f"{wrapped_country_name}\nGDP: N/A"
     gdp_value = country_gdp_values[current_year_index]
-    info_text = f"{country_name}\nGDP: {format_gdp_value(gdp_value)}"
+    info_text = f"{wrapped_country_name}\nGDP: {format_gdp_value(gdp_value)}"
     if similarity_scores:
         similarity_value = similarity_scores.get(country_name)
         if similarity_value is not None:
