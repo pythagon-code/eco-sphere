@@ -173,12 +173,21 @@ def add_hsv(col: Color, hsv: tuple[float, float, float]) -> Color:
         v + hsv[2],
     )
 
-def compute_growth_series(series: list[float]) -> list[float]:
+def compute_growth_series(series: list[float], start_index: int = 0, end_index: int | None = None, log_scale: bool = True) -> list[float]:
+    if end_index is None:
+        end_index = len(series) - 1
+    start_index = max(start_index, 0)
+    end_index = min(end_index, len(series) - 1)
+    if end_index - start_index < 1:
+        return []
     growth = []
-    for i in range(1, len(series)):
+    for i in range(start_index + 1, end_index + 1):
         prev_value = max(series[i - 1], 1e-9)
         value = max(series[i], 1e-9)
-        growth.append(math.log(value) - math.log(prev_value))
+        if log_scale:
+            growth.append(math.log(value) - math.log(prev_value))
+        else:
+            growth.append((value - prev_value) / prev_value)
     return growth
 
 def normalize_series(series: list[float]) -> list[float]:
@@ -207,14 +216,14 @@ def correlation(series_a: list[float], series_b: list[float]) -> float:
         return 0.0
     return numerator / denominator
 
-def compute_group_similarity(selected_names: list[str]) -> dict[str, float]:
+def compute_group_similarity(selected_names: list[str], start_index: int = 0, end_index: int | None = None, log_scale: bool = True) -> dict[str, float]:
     if not selected_names:
         return {}
     selected_growth = []
     for name in selected_names:
         if name not in gdps:
             continue
-        growth = normalize_series(compute_growth_series(gdps[name]))
+        growth = normalize_series(compute_growth_series(gdps[name], start_index, end_index, log_scale))
         if growth:
             selected_growth.append(growth)
     if not selected_growth:
@@ -225,7 +234,7 @@ def compute_group_similarity(selected_names: list[str]) -> dict[str, float]:
         reference.append(sum(growth[i] for growth in selected_growth) / len(selected_growth))
     scores = {}
     for name, series in gdps.items():
-        country_growth = normalize_series(compute_growth_series(series))
+        country_growth = normalize_series(compute_growth_series(series, start_index, end_index, log_scale))
         scores[name] = correlation(reference, country_growth)
     return scores
 

@@ -56,7 +56,21 @@ def toggle_log_scale() -> None:
         log_scale_button.text = "Log Scale: On"
     else:
         log_scale_button.text = "Log Scale: Off"
-    apply_year_colors(int(year_slider.value) - year_base, log_scale=use_log_scale)
+    if selected_countries:
+        start_year_index = int(year_slider.value) - year_base
+        end_year_index = int(end_year_slider.value) - year_base
+        if end_year_index < start_year_index:
+            end_year_index = start_year_index
+        similarity_scores.clear()
+        similarity_scores.update(compute_group_similarity(
+            sorted(country.name for country in selected_countries),
+            start_index=start_year_index,
+            end_index=end_year_index,
+            log_scale=use_log_scale,
+        ))
+        apply_similarity_colors()
+    else:
+        apply_year_colors(int(year_slider.value) - year_base, log_scale=use_log_scale)
 
 log_scale_button = Button(
     text="Log Scale: On",
@@ -77,16 +91,36 @@ year_slider = Slider(
     step=1,
     origin=Vec2(.5, .5),
     text_color=color.white,
-    position=(-.25, -.45),
+    position=(-.82, -.13),
 )
 year_slider_label = Text(
     parent=camera.ui,
-    text="Year",
+    text="Start Year",
     color=color.white,
     scale=1.5,
     origin=Vec2(.5, .5),
-    position=Vec2(.05, -.37),
+    position=Vec2(-.53, -.05),
 )
+end_year_slider = Slider(
+    parent=camera.ui,
+    min=1960,
+    max=2025,
+    default=2025,
+    step=1,
+    origin=Vec2(.5, .5),
+    text_color=color.white,
+    position=(-.82, -.23),
+    enabled=False,
+)
+end_year_slider_label = Text(
+    parent=camera.ui,
+    text="End Year",
+    color=color.white,
+    scale=1.5,
+    origin=Vec2(.5, .5),
+    position=Vec2(-.53, -.15),
+)
+end_year_slider_label.disable()
 
 legend_panel = Entity(
     parent = camera.ui,
@@ -158,7 +192,7 @@ def get_country_gdp_info_text(country_name: str) -> str:
     return info_text
 
 def apply_legend_values(year_index: int, log_scale: bool = True) -> None:
-    print(f"applying legend values for year {year_index}")
+    legend_title.text = "GDP Legend"
     gdp_values = sorted(gdp[year_index] for gdp in gdps.values())
     if not gdp_values:
         return
@@ -170,6 +204,19 @@ def apply_legend_values(year_index: int, log_scale: bool = True) -> None:
         scaled_value = step * gdp_scale_max
         gdp_value = math.expm1(scaled_value) if log_scale else scaled_value
         legend_values[i].text = format_gdp_value(gdp_value)
+
+def apply_similarity_legend_values() -> None:
+    legend_title.text = "Similarity Legend"
+    ratio_values = sorted(clamp((score + 1) / 2, 0, 1) for score in similarity_scores.values())
+    for i in range(legend_num_steps):
+        step = i / (legend_num_steps - 1)
+        if ratio_values:
+            ratio_index = int(step * (len(ratio_values) - 1))
+            ratio = ratio_values[ratio_index]
+        else:
+            ratio = step
+        legend_points[i].color = add_hsv(color.red, (ratio * 340, 0, 0))
+        legend_values[i].text = f"{ratio:.2f}"
 
 def apply_year_colors(year_index: int, log_scale: bool = True) -> None:
     global current_year_index
@@ -194,6 +241,21 @@ def apply_year_colors(year_index: int, log_scale: bool = True) -> None:
         col = add_hsv(color.red, (ratio * 340, 0, 0))
         country.color = col
     apply_legend_values(year_index, log_scale=log_scale)
+
+def apply_similarity_colors() -> None:
+    apply_similarity_legend_values()
+    for name, country in countries.items():
+        score = similarity_scores.get(name, 0.0)
+        ratio = (score + 1) / 2
+        ratio = clamp(ratio, 0, 1)
+        col = add_hsv(color.red, (ratio * 340, 0, 0))
+        country.color = col
+        country.alpha = .6
+        country.scale = .02
+    for country in selected_countries:
+        country.color = color.white
+        country.alpha = 1.
+        country.scale = .03
 
 def input(key: str) -> None:
     global left_mouse_pressed, mouse_position, camera_distance, selected_country, unselected_country
@@ -220,7 +282,7 @@ camera.position = Vec3(spherical_to_cartesian(camera_distance, camera_phi, camer
 camera.look_at(globe.position)
 
 def update() -> None:
-    global mouse_position, camera_phi, camera_theta, gui, hovered_country, hovered_country_name, hovered_country_info_text, similarity_scores, similarity_signature, selected_country, unselected_country
+    global mouse_position, camera_phi, camera_theta, current_year_index, gui, hovered_country, hovered_country_name, hovered_country_info_text, similarity_scores, similarity_signature, selected_country, unselected_country
     if left_mouse_pressed:
         mouse_delta = mouse.position - mouse_position
         mouse_position = mouse.position
@@ -264,19 +326,36 @@ def update() -> None:
         unselected_country = None
 
     selected_names = sorted(country.name for country in selected_countries)
+    start_year_index = int(year_slider.value) - year_base
+    end_year_index = int(end_year_slider.value) - year_base
+    if end_year_index < start_year_index:
+        end_year_index = start_year_index
+        end_year_slider.value = year_base + end_year_index
     next_signature = tuple(selected_names)
-    if next_signature != similarity_signature:
-        similarity_signature = next_signature
+    signature_with_range = (next_signature, start_year_index, end_year_index, use_log_scale)
+    if signature_with_range != similarity_signature:
+        similarity_signature = signature_with_range
         if selected_names:
-            similarity_scores = compute_group_similarity(selected_names)
+            similarity_scores = compute_group_similarity(
+                selected_names,
+                start_index=start_year_index,
+                end_index=end_year_index,
+                log_scale=use_log_scale,
+            )
+            apply_similarity_colors()
         else:
             similarity_scores = {}
+            apply_year_colors(current_year_index if current_year_index is not None else int(year_slider.value) - year_base, log_scale=use_log_scale)
         hovered_country_info_text = None
 
     if not selected_countries:
         unselect_all_button.disable()
+        end_year_slider.disable()
+        end_year_slider_label.disable()
     else:
         unselect_all_button.enable()
+        end_year_slider.enable()
+        end_year_slider_label.enable()
 
     if unselect_all_button.hovered:
         unselect_all_button.color = unselect_all_button_hover_color
@@ -287,9 +366,13 @@ def update() -> None:
     else:
         log_scale_button.color = log_scale_button_base_color
 
-    year_index = int(year_slider.value) - year_base
+    year_index = start_year_index
     if year_index != current_year_index:
-        apply_year_colors(year_index, log_scale=use_log_scale)
+        if selected_countries:
+            current_year_index = year_index
+            hovered_country_info_text = None
+        else:
+            apply_year_colors(year_index, log_scale=use_log_scale)
 
 draw_boundaries(globe, radius=0.501, col=add_hsv(color.green, (0, -.8, 0)))
 draw_centroids(globe, radius=0.501, col=add_hsv(color.red, (0, 0, -.1)), alpha=.4, size=.02)
