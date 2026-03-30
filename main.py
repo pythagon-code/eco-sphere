@@ -9,6 +9,9 @@ globe = Entity(model="sphere", color=add_hsv(color.dark_gray, (0, 0, -.12)), sca
 gui = None
 hovered_country = None
 hovered_country_name = None
+hovered_country_info_text = None
+similarity_scores = {}
+similarity_signature = None
 selected_countries = []
 selected_country = None
 unselected_country = None
@@ -138,6 +141,22 @@ def format_gdp_value(gdp_value: float) -> str:
         return f"{gdp_value / 1000000:.1f}M"
     return f"{gdp_value:.0f}"
 
+def get_country_gdp_info_text(country_name: str) -> str:
+    if country_name not in gdps:
+        return f"{country_name}\nGDP: N/A"
+    if current_year_index is None:
+        return f"{country_name}\nGDP: N/A"
+    country_gdp_values = gdps[country_name]
+    if current_year_index < 0 or current_year_index >= len(country_gdp_values):
+        return f"{country_name}\nGDP: N/A"
+    gdp_value = country_gdp_values[current_year_index]
+    info_text = f"{country_name}\nGDP: {format_gdp_value(gdp_value)}"
+    if similarity_scores:
+        similarity_value = similarity_scores.get(country_name)
+        if similarity_value is not None:
+            info_text += f"\nSimilarity: {similarity_value:.3f}"
+    return info_text
+
 def apply_legend_values(year_index: int, log_scale: bool = True) -> None:
     print(f"applying legend values for year {year_index}")
     gdp_values = sorted(gdp[year_index] for gdp in gdps.values())
@@ -201,7 +220,7 @@ camera.position = Vec3(spherical_to_cartesian(camera_distance, camera_phi, camer
 camera.look_at(globe.position)
 
 def update() -> None:
-    global mouse_position, camera_phi, camera_theta, gui, hovered_country, hovered_country_name, selected_country, unselected_country
+    global mouse_position, camera_phi, camera_theta, gui, hovered_country, hovered_country_name, hovered_country_info_text, similarity_scores, similarity_signature, selected_country, unselected_country
     if left_mouse_pressed:
         mouse_delta = mouse.position - mouse_position
         mouse_position = mouse.position
@@ -217,18 +236,24 @@ def update() -> None:
         hovered_country.scale = .02
     hovered_country = mouse.hovered_entity
     if hovered_country and hovered_country not in selected_countries and hovered_country.name in countries:
+        info_text = get_country_gdp_info_text(hovered_country.name)
         if hovered_country_name != hovered_country.name:
-            print(f"displaying country info for {hovered_country.name}")
-            gui = display_country_info(gui, hovered_country.name)
+            gui = display_country_info(gui, hovered_country.name, info_text)
             hovered_country_name = hovered_country.name
+            hovered_country_info_text = info_text
         elif gui is None:
-            gui = display_country_info(gui, hovered_country.name)
+            gui = display_country_info(gui, hovered_country.name, info_text)
+            hovered_country_info_text = info_text
+        elif hovered_country_info_text != info_text:
+            gui = display_country_info(gui, hovered_country.name, info_text)
+            hovered_country_info_text = info_text
         hovered_country.alpha = .8
         hovered_country.scale = .025
     if not hovered_country or hovered_country.name not in countries:
         if gui is not None:
             gui.disable()
         hovered_country_name = None
+        hovered_country_info_text = None
     if selected_country:
         selected_country.alpha = 1.
         selected_country.scale = .03
@@ -237,6 +262,17 @@ def update() -> None:
         unselected_country.alpha = .6
         unselected_country.scale = .02
         unselected_country = None
+
+    selected_names = sorted(country.name for country in selected_countries)
+    next_signature = tuple(selected_names)
+    if next_signature != similarity_signature:
+        similarity_signature = next_signature
+        if selected_names:
+            similarity_scores = compute_group_similarity(selected_names)
+        else:
+            similarity_scores = {}
+        hovered_country_info_text = None
+
     if not selected_countries:
         unselect_all_button.disable()
     else:
@@ -253,7 +289,6 @@ def update() -> None:
 
     year_index = int(year_slider.value) - year_base
     if year_index != current_year_index:
-        print(f"applying year colors {year_index}")
         apply_year_colors(year_index, log_scale=use_log_scale)
 
 draw_boundaries(globe, radius=0.501, col=add_hsv(color.green, (0, -.8, 0)))

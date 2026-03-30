@@ -148,7 +148,7 @@ def draw_centroids(globe: Entity, radius: float, col: Color, alpha: float, size:
             except Exception:
                 print(f"Error parsing row: {row}")
 
-def display_country_info(gui: Entity | None, country: str) -> Entity:
+def display_country_info(gui: Entity | None, country: str, info_text: str) -> Entity:
     if gui is None:
         gui = Entity(
             parent=camera.ui,
@@ -159,10 +159,10 @@ def display_country_info(gui: Entity | None, country: str) -> Entity:
             position=Vec2(-0.6, 0.2),
             name="country_info",
         )
-        gui.text = Text(parent=gui, text=country, color=color.white, scale=5, origin=Vec2(0, 0), position=Vec2(0, 0.1))
+        gui.text = Text(parent=gui, text=info_text, color=color.white, scale=5, origin=Vec2(0, 0), position=Vec2(0, 0.1))
     else:
         gui.enable()
-        gui.text.text = country
+        gui.text.text = info_text
     return gui
 
 def add_hsv(col: Color, hsv: tuple[float, float, float]) -> Color:
@@ -172,6 +172,62 @@ def add_hsv(col: Color, hsv: tuple[float, float, float]) -> Color:
         s + hsv[1],
         v + hsv[2],
     )
+
+def compute_growth_series(series: list[float]) -> list[float]:
+    growth = []
+    for i in range(1, len(series)):
+        prev_value = max(series[i - 1], 1e-9)
+        value = max(series[i], 1e-9)
+        growth.append(math.log(value) - math.log(prev_value))
+    return growth
+
+def normalize_series(series: list[float]) -> list[float]:
+    if not series:
+        return []
+    mean_value = sum(series) / len(series)
+    variance = sum((value - mean_value) ** 2 for value in series) / len(series)
+    std_value = math.sqrt(variance)
+    if std_value < 1e-12:
+        return [0.0 for _ in series]
+    return [(value - mean_value) / std_value for value in series]
+
+def correlation(series_a: list[float], series_b: list[float]) -> float:
+    if not series_a or not series_b:
+        return 0.0
+    size = min(len(series_a), len(series_b))
+    if size == 0:
+        return 0.0
+    x = series_a[:size]
+    y = series_b[:size]
+    numerator = sum(a * b for a, b in zip(x, y))
+    denom_x = math.sqrt(sum(a * a for a in x))
+    denom_y = math.sqrt(sum(b * b for b in y))
+    denominator = denom_x * denom_y
+    if denominator < 1e-12:
+        return 0.0
+    return numerator / denominator
+
+def compute_group_similarity(selected_names: list[str]) -> dict[str, float]:
+    if not selected_names:
+        return {}
+    selected_growth = []
+    for name in selected_names:
+        if name not in gdps:
+            continue
+        growth = normalize_series(compute_growth_series(gdps[name]))
+        if growth:
+            selected_growth.append(growth)
+    if not selected_growth:
+        return {}
+    min_size = min(len(growth) for growth in selected_growth)
+    reference = []
+    for i in range(min_size):
+        reference.append(sum(growth[i] for growth in selected_growth) / len(selected_growth))
+    scores = {}
+    for name, series in gdps.items():
+        country_growth = normalize_series(compute_growth_series(series))
+        scores[name] = correlation(reference, country_growth)
+    return scores
 
 def get_gdp_data() -> None:
     gdp_data_url = "https://api.worldbank.org/v2/en/indicator/NY.GDP.MKTP.CD?downloadformat=csv"
