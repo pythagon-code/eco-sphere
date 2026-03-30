@@ -7,9 +7,12 @@ from utils import *
 app = Ursina()
 
 window.color = add_hsv(color.white, (0, -.2, -.4))
-globe = Entity(model="sphere", color=add_hsv(color.dark_gray, (0, 0, -.1)), scale=4, name="globe")
+globe = Entity(model="sphere", color=add_hsv(color.dark_gray, (0, 0, -.12)), scale=4, name="globe")
 gui = None
 hovered_country = None
+selected_countries = []
+selected_country = None
+unselected_country = None
 
 draw_globe_line(globe=globe, rho=0.5, color=color.cyan, alpha=.6, size=0.004, num_markers=100, theta=math.pi/2)
 Entity(model="sphere", color=color.cyan, alpha=.7, scale=0.008, position=Vec3(0, 0.5, 0), parent=globe)
@@ -19,10 +22,19 @@ mouse_position = Vec3(0, 0)
 camera.parent = globe
 
 def input(key: str) -> None:
-    global left_mouse_pressed, mouse_position, camera_distance
+    global left_mouse_pressed, mouse_position, camera_distance, selected_country, unselected_country
     if key == "left mouse down":
         mouse_position = mouse.position
         left_mouse_pressed = True
+        mouse_hovered_entity = mouse.hovered_entity
+        if mouse_hovered_entity and mouse_hovered_entity.name in countries:
+            if mouse_hovered_entity in selected_countries:
+                unselected_country = mouse_hovered_entity
+                selected_countries.remove(unselected_country)
+            else:
+                selected_country = mouse_hovered_entity
+                selected_countries.append(selected_country)
+
     elif key == "left mouse up":
         left_mouse_pressed = False
     if key == "scroll up":
@@ -34,7 +46,7 @@ camera.position = Vec3(spherical_to_cartesian(camera_distance, camera_phi, camer
 camera.look_at(globe.position)
 
 def update() -> None:
-    global mouse_position, camera_phi, camera_theta, gui, hovered_country
+    global mouse_position, camera_phi, camera_theta, gui, hovered_country, selected_country, unselected_country
     if left_mouse_pressed:
         mouse_delta = mouse.position - mouse_position
         mouse_position = mouse.position
@@ -45,14 +57,25 @@ def update() -> None:
     camera.rotation_z = 0
     camera.look_at(globe.position)
 
-    if hovered_country and hovered_country.name in countries:
+    if hovered_country and hovered_country.name in countries and hovered_country not in selected_countries:
         hovered_country.alpha = .6
         hovered_country.scale = .02
     hovered_country = mouse.hovered_entity
-    if hovered_country and hovered_country.name in countries:
+    if hovered_country and hovered_country not in selected_countries and hovered_country.name in countries:
+        print("hovered country")
         gui = display_country_info(gui, hovered_country.name)
-        hovered_country.alpha = 1.
-        hovered_country.scale = .03
+        hovered_country.alpha = .8
+        hovered_country.scale = .025
+    if selected_country:
+        print("selected country")
+        selected_country.alpha = 1.
+        selected_country.scale = .03
+        selected_country = None
+    elif unselected_country:
+        print("unselected country")
+        unselected_country.alpha = .6
+        unselected_country.scale = .02
+        unselected_country = None
     else:
         if gui is not None:
             gui.disable()
